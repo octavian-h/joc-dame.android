@@ -30,10 +30,12 @@ import checkers.p2p.event.*;
  * Operatii pe parteneri.
  * 
  * @author Hasna Octavian-Lucian
+ * @version 15.12.2011
  */
 public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeListener
 {
 	private PipeAdvertisement pipeAdv;
+	private PeerAdvertisement peerAdv;
 
 	private EventListenerList listenerList;
 
@@ -66,13 +68,16 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 		peerID = defaultPeerGroup.getPeerID();
 		peerName = defaultPeerGroup.getPeerName();
 		pipeAdv = getPipeAdvertisement(pipeId, pipeName);
-
+		peerAdv = defaultPeerGroup.getPeerAdvertisement();
+		Log.i("Peers",peerAdv.toString());
 		isRunning = false;
 	}
 
 	/**
-	 * Creeaza un pipe advertisement cu pipeID format din defaultPeerGroup
+	 * Creeaza un pipe advertisement din id-ul si umele primit.
 	 * 
+	 * @param pipeId
+	 * @param pipeName
 	 * @return pipe advertisement
 	 */
 	public static PipeAdvertisement getPipeAdvertisement(String pipeId, String pipeName)
@@ -86,7 +91,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 		}
 		catch (URISyntaxException e)
 		{
-			Log.e("Peers", "pipe id incorect!");
+			Log.e("Peers","pipe id incorect!");
 		}
 		advertisement.setPipeID(pipeID);
 		advertisement.setType(PipeService.PropagateType);
@@ -114,12 +119,14 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 	{
 		try
 		{
-			discovery.publish(pipeAdv);//, lifetime, expiration);
-			discovery.remotePublish(peerID.toString(), pipeAdv);//, expiration);
+			discovery.publish(pipeAdv, lifetime, expiration);
+			discovery.remotePublish(peerID.toString(), pipeAdv, expiration);
+			discovery.publish(peerAdv, lifetime, expiration);
+			discovery.remotePublish(peerID.toString(), peerAdv, expiration);
 		}
 		catch (IOException e)
 		{
-			Log.e("Peers", "nu s-a putut publica peer-ul");
+			Log.e("Peers","nu s-a putut publica peer-ul");
 		}
 	}
 
@@ -141,7 +148,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 			}
 			catch (IOException e)
 			{
-				Log.e("Peers", "Nu s-a putut crea input/output pipe.");
+				Log.e("Peers","Nu s-a putut crea input/output pipe.");
 			}
 
 		}
@@ -182,11 +189,11 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 	{
 		announce();
 		numePeer = peerName;
-		Log.i("Peers", "Cautare locala.");
+		Log.i("Peers","Cautare locala.");
 		searchLocal("Name", numePeer);
 		if (peers.size() < maxPeers)
 		{
-			Log.i("Peers", "Cautare externa.");
+			Log.i("Peers","Cautare externa.");
 			searchRemote("Name", peerName, maxPeers);
 		}
 	}
@@ -207,12 +214,12 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 				if (item instanceof PeerAdvertisement)
 				{
 					PeerAdvertisement pa = (PeerAdvertisement) item;
-					if (!pa.getPeerID().equals(peerID))
-					{
+					/*if (!pa.getPeerID().equals(peerID))
+					{*/
 						peers.put(pa.getPeerID().toString(), pa.getName());
-						Log.i("Peers", "A fost gasit:" + pa.getName());
-					}
-					else Log.i("Peers", "Adv-ul meu");
+						Log.i("Peers","A fost gasit:" + pa.getName());
+					/*}
+					else Log.i("Peers","Adv-ul meu");*/
 				}
 			}
 			if (peers.size() != aux)
@@ -256,7 +263,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 		}
 		catch (IOException e)
 		{
-			Log.e("Peers", "nu s-au putut citi cache-ul local.");
+			Log.e("Peers","nu s-au putut citi cache-ul local.");
 		}
 	}
 
@@ -277,7 +284,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 		}
 		catch (IOException e)
 		{
-			Log.e("Peers", "nu s-au putut sterge peer advertisements.");
+			Log.e("Peers","nu s-au putut sterge peer advertisements.");
 		}
 	}
 
@@ -296,7 +303,6 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 	{
 		DiscoveryResponseMsg rez = event.getResponse();
 		addPeers(rez.getAdvertisements());
-		fireSearchFinished(getPeers());
 	}
 
 	/**
@@ -325,7 +331,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 			}
 			catch (IOException e)
 			{
-				Log.e("Peers", "nu s-a putut trimite mesajul.");
+				Log.e("Peers","nu s-a putut trimite mesajul.");
 			}
 		}
 		return false;
@@ -337,7 +343,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 	public void pipeMsgEvent(PipeMsgEvent event)
 	{
 		Message msg = event.getMessage();
-		Log.i("Peers", "PipeMsgEvent");
+		Log.i("Peers","PipeMsgEvent");
 		if (msg != null)
 		{
 			final MessageElement receiverID = msg.getMessageElement(null, "ReceiverID");
@@ -351,7 +357,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 					if (senderName != null && data != null)
 					{
 
-						Log.i("Peers", "s-a primit un mesaj de la " + senderName + " ce contine [" + data.toString() + "]");
+						Log.i("Peers","s-a primit un mesaj de la " + senderName + " ce contine [" + data.toString() + "]");
 						Thread t = new Thread() {
 							public void run()
 							{
@@ -418,22 +424,7 @@ public class Peers implements DiscoveryListener, PipeMsgListener, OutputPipeList
 		{
 			listeners[i].stateChanged(new P2PEvent(this, P2PEvent.PEER_FOUND, peersList));
 		}
-	}
-
-	/**
-	 * Notifica terminarea cautarii.
-	 * 
-	 * @param peersList
-	 */
-	private synchronized void fireSearchFinished(HashMap<String, String> peersList)
-	{
-		P2PListener[] listeners = listenerList.getListeners(P2PListener.class);
-
-		for (int i = listeners.length - 1; i >= 0; --i)
-		{
-			listeners[i].stateChanged(new P2PEvent(this, P2PEvent.PEER_SEARCH_FINISHED, peersList));
-		}
-	}
+	}	
 
 	/**
 	 * Notifica primirea unui mesaj.

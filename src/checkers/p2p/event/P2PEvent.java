@@ -6,6 +6,7 @@ import java.util.HashMap;
  * Evenimentele din reteaua P2P.
  * 
  * @author Hasna Octavian-Lucian
+ * @version 15.12.2011
  */
 public class P2PEvent extends java.util.EventObject
 {

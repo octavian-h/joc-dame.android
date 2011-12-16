@@ -3,9 +3,8 @@ package checkers.p2p;
 import java.io.IOException;
 import java.util.Enumeration;
 import java.util.HashMap;
-import android.util.Log;
 
-import checkers.p2p.event.EventListenerList;
+import android.util.Log;
 
 import net.jxta.credential.AuthenticationCredential;
 import net.jxta.discovery.DiscoveryEvent;
@@ -28,6 +27,7 @@ import checkers.p2p.event.*;
  * Operatii pe grupuri.
  * 
  * @author Hasna Octavian-Lucian
+ * @version 15.12.2011
  */
 public class Groups implements DiscoveryListener
 {
@@ -87,12 +87,12 @@ public class Groups implements DiscoveryListener
 	 */
 	public void search(String groupName, int maxGroups)
 	{
-		Log.i("Groups", "Cautare locala.");
+		Log.i("Groups","Cautare locala.");
 		searchLocal("Name", groupName);
 
 		if (groups.size() < maxGroups)
 		{
-			Log.i("Groups", "Cautare externa.");
+			Log.i("Groups","Cautare externa.");
 			searchRemote("Name", groupName, maxGroups);
 		}
 	}
@@ -115,7 +115,7 @@ public class Groups implements DiscoveryListener
 				{
 					PeerGroupAdvertisement pga = (PeerGroupAdvertisement) item;
 					groups.put(pga.getPeerGroupID().toString(), pga.getName());
-					Log.i("Groups", "A fost gasit:" + pga.getName());
+					Log.i("Groups","A fost gasit:" + pga.getName());
 					if (primul)
 					{
 						firstPeerGroupAdv = pga;
@@ -164,7 +164,7 @@ public class Groups implements DiscoveryListener
 		}
 		catch (IOException e)
 		{
-			Log.e("Groups", "nu s-au putut citi cache-ul local.");
+			Log.e("Groups","nu s-au putut citi cache-ul local.");
 		}
 	}
 
@@ -185,7 +185,7 @@ public class Groups implements DiscoveryListener
 		}
 		catch (IOException e)
 		{
-			Log.e("Groups", "nu s-au putut sterge group advertisements.");
+			Log.e("Groups","nu s-au putut sterge group advertisements.");
 		}
 	}
 
@@ -201,7 +201,7 @@ public class Groups implements DiscoveryListener
 		}
 		catch (PeerGroupException e)
 		{
-			Log.e("Groups", "nu s-au putut crea grupul din PeerGroupAdvertisement.");
+			Log.e("Groups","nu s-au putut crea grupul din PeerGroupAdvertisement.");
 		}
 
 		return primul;
@@ -250,7 +250,7 @@ public class Groups implements DiscoveryListener
 		}
 		catch (Exception e)
 		{
-			Log.e("Groups", "Nu s-a putut crea noul grup.");
+			Log.e("Groups","Nu s-a putut crea noul grup.");
 		}
 
 		return newGroup;
@@ -273,13 +273,13 @@ public class Groups implements DiscoveryListener
 			if (authenticator.isReadyForJoin())
 			{
 				membershipService.join(authenticator);
-				Log.i("Groups", "S-a facut join la grupul " + group);
+				Log.i("Groups","S-a facut join la grupul " + group);
 				return true;
 			}
 		}
 		catch (Exception e)
 		{
-			Log.e("Groups", "Nu s-a putut crea noul authenticator-ul.");
+			Log.e("Groups","Nu s-a putut crea noul authenticator-ul.");
 		}
 
 		return false;
@@ -292,7 +292,6 @@ public class Groups implements DiscoveryListener
 	{
 		DiscoveryResponseMsg rez = event.getResponse();
 		addGroups(rez.getAdvertisements());
-		fireSearchFinished(getGroups());
 	}
 
 	/**
@@ -323,21 +322,6 @@ public class Groups implements DiscoveryListener
 		for (int i = listeners.length - 1; i >= 0; --i)
 		{
 			listeners[i].stateChanged(new P2PEvent(this, P2PEvent.GROUP_FOUND, groupsList));
-		}
-	}
-
-	/**
-	 * Notifica terminarea cautarii.
-	 * 
-	 * @param groupsList
-	 */
-	private synchronized void fireSearchFinished(HashMap<String, String> groupsList)
-	{
-		P2PListener[] listeners = listenerList.getListeners(P2PListener.class);
-
-		for (int i = listeners.length - 1; i >= 0; --i)
-		{
-			listeners[i].stateChanged(new P2PEvent(this, P2PEvent.GROUP_SEARCH_FINISHED, groupsList));
 		}
 	}
 }

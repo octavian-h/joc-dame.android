@@ -10,17 +10,25 @@ import java.util.TimerTask;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import android.util.Log;
+
 import net.jxta.exception.PeerGroupException;
 import net.jxta.id.IDFactory;
 import net.jxta.peergroup.PeerGroup;
 import net.jxta.peergroup.PeerGroupID;
+import net.jxta.platform.ConfigurationFactory;
+import net.jxta.platform.NetworkConfigurator;
 import net.jxta.platform.NetworkManager;
-
-import android.util.Log;
 
 import checkers.p2p.event.*;
 
-public class JXTAService implements P2PListener
+/**
+ * Conexiunea cu retea P2P prin protocolul JXTA.
+ * 
+ * @author Hasna Octavian-Lucian
+ * @version 15.12.2011
+ */
+public class Connection implements P2PListener
 {
 	private final static long TIMER_PERIOD = 1000;
 	private final static long TIMER_FIRST_DELAY = 200;
@@ -33,22 +41,37 @@ public class JXTAService implements P2PListener
 	private Groups groups;
 	private Peers peers;
 	private String groupId, groupName, pipeId, pipeName;
-	private boolean isRunning, ready;
+	private boolean started, ready, searching;
 	private Timer timer;
 	private int searchesNumber;
 
-	public JXTAService(String peerName, File cacheFolder) throws IOException
+
+	/**
+	 * Constructorul pentru clasa Connection.
+	 * 
+	 * @param peerName numele partenerului local
+	 * @param cacheFolder folder-ul in care se salveaza fisierele de configurare
+	 * @throws IOException
+	 */
+	public Connection(String peerName, File cacheFolder) throws IOException
 	{
-		Log.i("JXTAService", "constructor");
+		Log.i("Connection","constructor");
 
 		listenerList = new EventListenerList();
-		manager = new NetworkManager(NetworkManager.EDGE, peerName, cacheFolder.toURI());
-
+		manager = new NetworkManager(NetworkManager.ADHOC, peerName, cacheFolder.toURI());
+		NetworkConfigurator config = manager.getConfigurator();
+		config.setName(peerName);
+		config.setMode(NetworkConfigurator.HTTP_CLIENT + NetworkConfigurator.HTTP_SERVER);
+		
+		ConfigurationFactory cf = ConfigurationFactory.newInstance();
+		cf.setName(peerName);
+		
 		timer = new Timer();
 		searchesNumber = 0;
 
-		isRunning = false;
+		started = false;
 		ready = false;
+		searching = false;
 	}
 
 	public void start() throws PeerGroupException, IOException
@@ -57,14 +80,24 @@ public class JXTAService implements P2PListener
 				"urn:jxta:uuid-59616261646162614E504720503250338BDD512C72FE462EAE54E9948FF4C23E04", "CheckerPipe");
 	}
 
+	/**
+	 * Porneste conexiunea prin protocolul JXTA.
+	 * 
+	 * @param groupId
+	 * @param groupName
+	 * @param pipeId
+	 * @param pipeName
+	 * @throws PeerGroupException
+	 * @throws IOException
+	 */
 	public void start(String groupId, final String groupName, String pipeId, String pipeName) throws PeerGroupException, IOException
 	{
-		if (!isRunning)
+		if (!started)
 		{
-			Log.i("JXTAService", "S-a deschis conexiunea.");
+			Log.i("Connection","S-a deschis conexiunea.");
 
 			manager.startNetwork();
-			isRunning = true;
+			started = true;
 			ready = false;
 			this.groupId = groupId;
 			this.groupName = groupName;
@@ -72,12 +105,14 @@ public class JXTAService implements P2PListener
 			this.pipeName = pipeName;
 			netPeerGroup = manager.getNetPeerGroup();
 			groups = new Groups(netPeerGroup);
-			groups.start();
+			//groups.flush();
 			groups.addP2PListener(this);
-			groups.flush();
+			groups.start();
+			
 
 			timer = new Timer();
 			searchesNumber = 0;
+			searching = true;
 			timer.schedule(new TimerTask() {
 
 				@Override
@@ -87,12 +122,12 @@ public class JXTAService implements P2PListener
 					if (searchesNumber > MAX_SEARCHES_NUMBER || searchedGroup != null)
 					{
 						timer.cancel();
-						// err
+						searching = false;
 						stateChanged(new P2PEvent(this, P2PEvent.GROUP_SEARCH_FINISHED));
 					}
 					else
 					{
-						Log.i("JXTAService", "Cautarea nr " + searchesNumber);
+						Log.i("Groups","Cautarea nr " + searchesNumber);
 						groups.search(groupName, 1);
 					}
 				}
@@ -122,7 +157,7 @@ public class JXTAService implements P2PListener
 
 	public boolean isStarted()
 	{
-		return isRunning;
+		return started;
 	}
 
 	public boolean isReady()
@@ -135,10 +170,10 @@ public class JXTAService implements P2PListener
 	 */
 	public void stop()
 	{
-		if (isRunning)
+		if (started)
 		{
 			timer.cancel();
-			Log.i("JXTAService", "S-a inchis conexiunea.");
+			Log.i("Connection","S-a inchis conexiunea.");
 
 			if (peers != null)
 			{
@@ -151,7 +186,7 @@ public class JXTAService implements P2PListener
 			groups = null;
 			searchedGroup = null;
 			manager.stopNetwork();
-			isRunning = false;
+			started = false;
 			ready = false;
 		}
 	}
@@ -161,10 +196,30 @@ public class JXTAService implements P2PListener
 	 */
 	public void searchPeers()
 	{
-		if (peers != null)
+		if (ready && !searching)
 		{
-			// peers.flush();
-			peers.search();
+			timer = new Timer();
+			searchesNumber = 0;
+			searching = true;
+			timer.schedule(new TimerTask() {
+
+				@Override
+				public void run()
+				{
+					searchesNumber++;
+					if (searchesNumber > MAX_SEARCHES_NUMBER)
+					{
+						timer.cancel();
+						searching = false;
+						firePeersSearchFinished(peers.getPeers());
+					}
+					else
+					{
+						Log.i("Peers","Cautarea nr " + searchesNumber);
+						peers.search();
+					}
+				}
+			}, TIMER_FIRST_DELAY, TIMER_PERIOD);			
 		}
 	}
 
@@ -174,24 +229,51 @@ public class JXTAService implements P2PListener
 	 * @param nameFilter
 	 * @throws Exception
 	 */
-	public void searchPeers(String nameFilter) throws IllegalArgumentException
+	public void searchPeers(final String nameFilter) throws IllegalArgumentException
 	{
-		if (peers != null)
+		if (ready && !searching)
 		{
-			// peers.flush();
 			Pattern p = Pattern.compile("\\w*");// a-z A-Z _ 0-9
 			Matcher m = p.matcher(nameFilter);
-			if (m.matches())
-			{
-				peers.search("*" + nameFilter + "*", 10);
-			}
-			else
+			if (!m.matches())
 			{
 				throw new IllegalArgumentException("Filtru contine caractere nepermise");
 			}
+			
+			timer = new Timer();
+			searchesNumber = 0;
+			searching = true;
+			timer.schedule(new TimerTask() {
+
+				@Override
+				public void run()
+				{
+					searchesNumber++;
+					if (searchesNumber > MAX_SEARCHES_NUMBER)
+					{
+						timer.cancel();
+						searching = false;
+						firePeersSearchFinished(peers.getPeers());
+					}
+					else
+					{
+						Log.i("Peers","Cautarea nr " + searchesNumber);
+						peers.search("*" + nameFilter + "*", 10);
+					}
+				}
+			}, TIMER_FIRST_DELAY, TIMER_PERIOD);			
 		}
 	}
 
+	/**
+	 * Opresete cautarea de parteneri.
+	 */
+	public void stopSearch()
+	{
+		timer.cancel();
+		searching = false;
+	}
+	
 	/**
 	 * Trimite un mesaj prin output pipe.
 	 * 
@@ -229,7 +311,7 @@ public class JXTAService implements P2PListener
 	}
 
 	/**
-	 * Se ocupa cu evenimentul generate de P2P de gasirea unui grup.
+	 * Se ocupa cu evenimentele generate de retea P2P.
 	 */
 	public void stateChanged(P2PEvent event)
 	{
@@ -237,25 +319,27 @@ public class JXTAService implements P2PListener
 		{
 			case P2PEvent.GROUP_FOUND:
 			{
-				Log.i("JXTAService", "A fost gasit grupul.");
+				groups.removeP2PListener(this);
+				Log.i("Connection","A fost gasit grupul.");
 
 				searchedGroup = groups.getFirstGroup();
 				/*
-				 * if (!groups.joinGroup(searchedGroup)) { Log.e("JXTAService",
+				 * if (!groups.joinGroup(searchedGroup)) { Log.e("Connection",
 				 * "Nu s-a putut face join!"); }
 				 */
+				
 				peers = new Peers(netPeerGroup, pipeId, pipeName); // searchedGroup
 				peers.addP2PListener(this);
 				peers.start();
-				
-				fireConnectionReady();
 				break;
 			}
 			case P2PEvent.GROUP_SEARCH_FINISHED:
 			{
-				if (searchesNumber > MAX_SEARCHES_NUMBER && searchedGroup == null)
+				if (searchedGroup == null)
 				{
-					Log.i("JXTAService", "Creaza grup nou.");
+					groups.removeP2PListener(this);					
+					Log.i("Connection","Creaza grup nou.");
+					
 					PeerGroupID peerGroupID = null;
 					try
 					{
@@ -263,24 +347,22 @@ public class JXTAService implements P2PListener
 					}
 					catch (URISyntaxException e)
 					{
-						Log.e("JXTAService", "peer id incorect!");
+						Log.e("Connection","peer id incorect!");
 					}
 					searchedGroup = groups.createGroup(peerGroupID, "CheckersGroup", "Group for checkers game.");
 					/*
 					 * if (!groups.joinGroup(searchedGroup)) {
-					 * Log.e("JXTAService", "Nu s-a putut face join!"); }
+					 * Log.e("Connection","Nu s-a putut face join!"); }
 					 */
 					peers = new Peers(netPeerGroup, pipeId, pipeName); // searchedGroup
 					peers.addP2PListener(this);
 					peers.start();
-					
-					fireConnectionReady();
 				}
 				break;
 			}
 			case P2PEvent.MESSAGE_RECEIVED:
 			{
-				Log.i("JXTAService", "s-a primit un mesaj de la " + event.getSenderName() + " ce contine [" + event.getMessage() + "]");
+				Log.i("Connection","s-a primit un mesaj de la " + event.getSenderName() + " ce contine [" + event.getMessage() + "]");
 
 				fireMessageReceived(event.getSenderID(), event.getSenderName(), event.getMessage());
 				break;
@@ -290,24 +372,19 @@ public class JXTAService implements P2PListener
 				fireContentChanged(event.getList());
 				break;
 			}
-			case P2PEvent.PEER_SEARCH_FINISHED:
-			{
-				// fireSearchFinished(event.getList());
-				break;
-			}
 			case P2PEvent.PEER_READY:
 			{
 				ready = true;
-				// fireConnectionReady();
+				fireConnectionReady();
 				// break;
 			}
 		}
 	}
 
 	/**
-	 * Notifica asocierea la grupul checkersGroup.
+	 * Notifica realizare conexiunii.
 	 */
-	private void fireConnectionReady()
+	private synchronized void fireConnectionReady()
 	{
 		P2PListener[] listeners = listenerList.getListeners(P2PListener.class);
 		for (int i = listeners.length - 1; i >= 0; --i)
@@ -321,7 +398,7 @@ public class JXTAService implements P2PListener
 	 * 
 	 * @param peersList
 	 */
-	private void fireContentChanged(HashMap<String, String> peersList)
+	private synchronized void fireContentChanged(HashMap<String, String> peersList)
 	{
 		P2PListener[] listeners = listenerList.getListeners(P2PListener.class);
 
@@ -332,11 +409,11 @@ public class JXTAService implements P2PListener
 	}
 
 	/**
-	 * Notifica terminarea cautarii.
+	 * Notifica terminarea cautarii de parteneri.
 	 * 
 	 * @param peersList
 	 */
-	private void fireSearchFinished(HashMap<String, String> peersList)
+	private synchronized void firePeersSearchFinished(HashMap<String, String> peersList)
 	{
 		P2PListener[] listeners = listenerList.getListeners(P2PListener.class);
 
